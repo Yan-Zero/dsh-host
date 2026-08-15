@@ -1,0 +1,7 @@
+node_modules/
+lib/
+dist/
+coverage/
+research-client/target/
+*.tgz
+.DS_Store

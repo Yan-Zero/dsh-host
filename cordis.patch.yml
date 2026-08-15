@@ -1,0 +1,167 @@
+# dsh-host is the host plane of the Web profile without a frontend surface.
+# It keeps the complete Harness domain/API and moves each session's agent plane
+# behind the same preset boundary used by Web.
+
+- id: system-prompt
+  config:
+    persona: >-
+      You are a coding agent powered by the {{model}} model. Your working directory is {{cwd}}.
+
+- id: hmr
+  disabled: true
+
+- id: session-query-sqlite
+  config:
+    path: ':memory:'
+    openAt: never
+
+- id: tools
+  config:
+    mode: !!js process.env.DSH_TOOLS_MODE
+
+- insert:
+    - id: code-runtime
+      name: '@deepseek-ai/dsh-code-runtime-worker-thread'
+
+    - id: storage
+      name: '@deepseek-ai/dsh-storage'
+
+    - id: storage-json
+      name: '@deepseek-ai/dsh-storage-json'
+      config:
+        root: !!js dshHomePath('storages')
+
+    - id: storage-domain
+      name: '@deepseek-ai/dsh-storage-domain'
+      config:
+        backend: json
+
+    - id: message-feedback
+      name: '@deepseek-ai/dsh-message-feedback'
+      config:
+        maxNoteBytes: 8192
+
+    - id: session-log-download
+      name: '@deepseek-ai/dsh-session-log-export'
+
+    - id: workspace
+      name: '@deepseek-ai/dsh-workspace'
+
+    - id: session-projection-cache
+      name: '@deepseek-ai/dsh-session-projection-cache'
+      config:
+        writeEveryEvents: 200
+        writeIntervalMs: 5000
+
+    - id: session-stats
+      name: '@deepseek-ai/dsh-session-stats'
+
+    - id: directory-picker
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
+
+    - id: plugin-inventory
+      name: '@deepseek-ai/dsh-host-plugin-inventory'
+
+    - id: api-gateway
+      name: '@deepseek-ai/dsh-host-apiproxy'
+      config:
+        nativeOpen: false
+
+    - id: cordis-host-runner
+      name: '@deepseek-ai/dsh-cordis-host-runner'
+
+    - id: host-startup
+      name: 'dsh-host/startup'
+
+    - id: webserver
+      name: 'dsh-host/server'
+      inject: [hostStartup]
+      config:
+        host: !!js ctx.hostStartup.host
+        port: !!js ctx.hostStartup.port
+        tokenFile: !!js ctx.hostStartup.tokenFile
+        tokenMode: !!js ctx.hostStartup.tokenMode
+        preferredToken: !!js ctx.hostStartup.preferredToken
+
+    - id: connection
+      name: '@deepseek-ai/dsh-client-connection'
+      config:
+        trustedHosts: []
+
+    - id: api-remotes
+      name: '@deepseek-ai/dsh-api-remotes'
+
+    # The standard Web observer owns its rendering locally, but these packages
+    # also have a Node half that defines durable Host contracts. Keep those
+    # halves in the headless profile so any compatible client sees the same
+    # settings namespaces and response guidance as the Web profile.
+    - id: client-locale-contract
+      name: '@deepseek-ai/dsh-client-locale'
+
+    - id: client-theme-contract
+      name: '@deepseek-ai/dsh-client-ui-theme'
+
+    - id: client-conversation-contract
+      name: '@deepseek-ai/dsh-client-ui-conversation'
+
+    - id: client-onboarding-contract
+      name: '@deepseek-ai/dsh-client-ui-settings-general'
+
+    - id: client-deliverables-contract
+      name: '@deepseek-ai/dsh-client-ui-deliverables'
+
+    - id: host-runtime
+      name: 'dsh-host'
+
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: standard
+
+# Per-session agent composition. Host registries and API services remain above.
+- id: tool-bash
+  disabled: true
+- id: tool-pwsh
+  disabled: true
+- id: tool-jobs
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-fs-search
+  disabled: true
+- id: tool-str-replace-editor
+  disabled: true
+- id: skill-filesystem
+  disabled: true
+- id: tool-skill
+  disabled: true
+- id: tool-goal
+  disabled: true
+- id: plan-mode
+  disabled: true
+- id: compaction-basic
+  disabled: true
+- id: command-compact
+  disabled: true
+- id: tool-result-pruner
+  disabled: true
+- id: tool-subagent-control
+  disabled: true
+- id: tool-subagent-list-agents
+  disabled: true
+- id: tool-subagent
+  disabled: true
+- id: tool-subagent-fork
+  disabled: true
+- id: workflow-worker-thread
+  disabled: true
+- id: tool-workflow
+  disabled: true
+- id: tool-ralph
+  disabled: true
+- id: agent-instructions
+  disabled: true
+- id: tool-todo
+  disabled: true
+- id: tool-web
+  disabled: true
