@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/Yan-Zero/dsh-host.git"
+    "url": "git+https://github.com/Yan-Zero/dsh-host.git"
   },
   "bugs": {
     "url": "https://github.com/Yan-Zero/dsh-host/issues"
@@ -28,6 +28,14 @@
       "types": "./lib/server.d.ts",
       "default": "./lib/server.js"
     },
+    "./control": {
+      "types": "./lib/control.d.ts",
+      "default": "./lib/control.js"
+    },
+    "./protocol": {
+      "types": "./lib/protocol.d.ts",
+      "default": "./lib/protocol.js"
+    },
     "./startup": {
       "types": "./lib/startup.d.ts",
       "default": "./lib/startup.js"
@@ -38,6 +46,7 @@
   "files": [
     "lib",
     "scripts",
+    "docs",
     "cordis.patch.yml",
     "README.md",
     "README.zh.md",
@@ -60,14 +69,8 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-api-gateway": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-agent-presets": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-connection": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-deliverables": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-settings-general": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-theme": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-cmdline": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-code-runtime-worker-thread": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-cordis-host-runner": "^0.1.0-rc.6",
@@ -77,28 +80,25 @@
     "@deepseek-ai/dsh-host-plugin-inventory": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-message-feedback": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-session-log-export": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-session-projection-cache": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-session-stats": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-storage": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-storage-domain": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-storage-json": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-workspace": "^0.1.0-rc.6",
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "dependencies": {
-    "commander": "^15.0.0"
+    "commander": "^15.0.0",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
+    "@deepseek-ai/dsh-api-gateway": "0.1.0-rc.6",
     "@deepseek-ai/dsh-agent-presets": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-api-remotes": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-locale": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-deliverables": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-settings-general": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-theme": "0.1.0-rc.6",
     "@deepseek-ai/dsh-cmdline": "0.1.0-rc.6",
     "@deepseek-ai/dsh-code-runtime-worker-thread": "0.1.0-rc.6",
     "@deepseek-ai/dsh-cordis-host-runner": "0.1.0-rc.6",
@@ -108,15 +108,18 @@
     "@deepseek-ai/dsh-host-plugin-inventory": "0.1.0-rc.6",
     "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.6",
     "@deepseek-ai/dsh-message-feedback": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
     "@deepseek-ai/dsh-session-log-export": "0.1.0-rc.6",
     "@deepseek-ai/dsh-session-projection-cache": "0.1.0-rc.6",
     "@deepseek-ai/dsh-session-stats": "0.1.0-rc.6",
     "@deepseek-ai/dsh-storage": "0.1.0-rc.6",
     "@deepseek-ai/dsh-storage-domain": "0.1.0-rc.6",
     "@deepseek-ai/dsh-storage-json": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.0-rc.6",
     "@deepseek-ai/dsh-workspace": "0.1.0-rc.6",
     "@deepseek-ai/schemastery": "3.18.1",
     "@types/node": "^22.20.0",
+    "@types/ws": "^8.18.1",
     "@types/js-yaml": "^4.0.9",
     "js-yaml": "^4.1.0",
     "tsdown": "^0.22.2",

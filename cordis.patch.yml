@@ -1,6 +1,6 @@
-# dsh-host is the host plane of the Web profile without a frontend surface.
-# It keeps the complete Harness domain/API and moves each session's agent plane
-# behind the same preset boundary used by Web.
+# dsh-host is a UI-neutral Harness execution plane. It keeps the complete
+# domain/API and moves each session's agent plane behind the standard preset
+# boundary; Web and TUI are clients, not parts of this profile.
 
 - id: system-prompt
   config:
@@ -83,40 +83,21 @@
         tokenMode: !!js ctx.hostStartup.tokenMode
         preferredToken: !!js ctx.hostStartup.preferredToken
 
-    - id: connection
-      name: '@deepseek-ai/dsh-client-connection'
-      config:
-        trustedHosts: []
-
-    - id: api-remotes
-      name: '@deepseek-ai/dsh-api-remotes'
-
-    # The standard Web observer owns its rendering locally, but these packages
-    # also have a Node half that defines durable Host contracts. Keep those
-    # halves in the headless profile so any compatible client sees the same
-    # settings namespaces and response guidance as the Web profile.
-    - id: client-locale-contract
-      name: '@deepseek-ai/dsh-client-locale'
-
-    - id: client-theme-contract
-      name: '@deepseek-ai/dsh-client-ui-theme'
-
-    - id: client-conversation-contract
-      name: '@deepseek-ai/dsh-client-ui-conversation'
-
-    - id: client-onboarding-contract
-      name: '@deepseek-ai/dsh-client-ui-settings-general'
-
-    - id: client-deliverables-contract
-      name: '@deepseek-ai/dsh-client-ui-deliverables'
-
-    - id: host-runtime
-      name: 'dsh-host'
-
     - id: agent-presets
       name: '@deepseek-ai/dsh-agent-presets'
       config:
         default: standard
+
+    - id: host-control
+      name: 'dsh-host/control'
+
+    # dsh-host owns the physical carrier. Every UI uses the same authenticated
+    # HTTP/WebSocket endpoint; no browser or terminal package is mounted here.
+    - id: host-protocol
+      name: 'dsh-host/protocol'
+
+    - id: host-runtime
+      name: 'dsh-host'
 
 # Per-session agent composition. Host registries and API services remain above.
 - id: tool-bash

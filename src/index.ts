@@ -19,11 +19,13 @@ import {
 } from './startup.js'
 
 export * from './constants.js'
+export * from './control.js'
+export * from './protocol.js'
 export * from './server.js'
 export * from './startup.js'
 
 export const name = 'dsh-host-runtime'
-export const inject = ['hostStartup', 'webServer', 'connection', 'apiProxy']
+export const inject = ['hostStartup', 'webServer', 'hostProtocol']
 
 function json(res: ServerResponse, status: number, value: unknown): void {
   res.writeHead(status, {
@@ -63,8 +65,12 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.webServer.register(route), 'dsh-host health route')
   const endpoint = describe()
   writeEndpoint(ctx.hostStartup.endpointFile, endpoint)
+  writeEndpoint(ctx.hostStartup.registryFile, endpoint)
   removeStartupClaim(ctx.hostStartup.startupFile, process.pid)
-  ctx.effect(() => () => { removeEndpoint(ctx.hostStartup.endpointFile, generationId) }, 'dsh-host endpoint registry')
+  ctx.effect(() => () => {
+    removeEndpoint(ctx.hostStartup.endpointFile, generationId)
+    removeEndpoint(ctx.hostStartup.registryFile, generationId)
+  }, 'dsh-host endpoint registry')
   process.stdout.write(`DSH_HOST_READY ${JSON.stringify({
     instanceId: endpoint.instanceId,
     pid: endpoint.pid,

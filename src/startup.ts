@@ -8,12 +8,13 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readdirSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { Command } from 'commander'
 import type { Context } from '@deepseek-ai/cordis'
 import { parseCmdline } from '@deepseek-ai/dsh-cmdline'
@@ -41,6 +42,8 @@ export interface HostStartupValues {
   tokenMode: 'managed' | 'external'
   preferredToken?: string
   endpointFile: string
+  /** Global per-user registry entry used to discover every running instance. */
+  registryFile: string
   identityFile: string
   supervisorLogFile: string
   startupFile: string
@@ -83,6 +86,7 @@ interface HostOptions {
   replace?: boolean
   status?: boolean
   kill?: boolean
+  list?: boolean
   startupTimeout?: string
 }
 
@@ -91,7 +95,7 @@ const INSTANCE_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/
 /** Build a fresh command parser for one profile invocation. */
 export function hostCommand(): Command {
   return new Command()
-    .name('dsh --profile dsh-host')
+    .name('dsh --profile host')
     .description('Run a persistent headless DeepSeek Harness Backend.')
     .helpOption('-h, --help', 'show this help')
     .option('--host <host>', 'bind host; only 127.0.0.1 is accepted', '127.0.0.1')
@@ -106,11 +110,12 @@ export function hostCommand(): Command {
     .option('--replace', 'replace an existing supervisor for this instance', false)
     .option('--status', 'print the current supervisor endpoint and exit', false)
     .option('--kill', 'stop the current supervisor and exit', false)
+    .option('--list', 'list every live Host instance for this user', false)
     .addHelpText('after', `
 Examples:
-  dsh --profile dsh-host
-  dsh --profile dsh-host --foreground --port 0
-  dsh --profile dsh-host --instance research --replace
+  dsh --profile host
+  dsh --profile host --foreground --port 0
+  dsh --profile host --instance research --replace
 `)
 }
 
@@ -151,8 +156,9 @@ export function resolveHostStartup(program: Command, options: HostOptions): Host
     program.error('error: --connection-token must not be empty')
   }
 
+  const dshHome = resolveDshHome()
   const dataDir = explicitPath(program, '--data-dir', options.dataDir)
-    ?? join(resolveDshHome(), 'host', instanceId)
+    ?? join(dshHome, 'host', instanceId)
   const externalTokenFile = explicitPath(program, '--connection-token-file', options.connectionTokenFile)
   const endpointFile = explicitPath(program, '--endpoint-file', options.endpointFile)
     ?? join(dataDir, 'endpoint.json')
@@ -165,6 +171,7 @@ export function resolveHostStartup(program: Command, options: HostOptions): Host
     tokenMode: externalTokenFile === undefined ? 'managed' as const : 'external' as const,
     ...(options.connectionToken === undefined ? {} : { preferredToken: options.connectionToken }),
     endpointFile,
+    registryFile: join(dshHome, 'host', 'registry', `${instanceId}.json`),
     identityFile: join(dataDir, 'identity'),
     supervisorLogFile: join(dataDir, 'supervisor.log'),
     startupFile: join(dataDir, 'startup.json'),
@@ -186,15 +193,48 @@ export function readEndpoint(path: string): EndpointRecord | undefined {
   }
 }
 
+/** Enumerate the live per-user Host registry and prune dead generations. */
+export function listRegisteredHosts(registryDir = join(resolveDshHome(), 'host', 'registry')): EndpointRecord[] {
+  let names: string[]
+  try { names = readdirSync(registryDir) } catch { return [] }
+  const endpoints: EndpointRecord[] = []
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue
+    const path = join(registryDir, name)
+    const endpoint = readEndpoint(path)
+    if (endpoint !== undefined && processExists(endpoint.pid)) endpoints.push(endpoint)
+    else rmSync(path, { force: true })
+  }
+  return endpoints.sort((left, right) => left.instanceId.localeCompare(right.instanceId))
+}
+
 /** Process existence is the conservative registry liveness check. */
 export function processExists(pid: number): boolean {
   if (!Number.isSafeInteger(pid) || pid <= 0) return false
   try {
     process.kill(pid, 0)
-    return true
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'EPERM'
   }
+  // A detached child that exits while this process is in the synchronous
+  // readiness loop remains a zombie until Node can service SIGCHLD. kill(0)
+  // reports that PID as alive, which used to hide immediate boot failures
+  // until the full startup timeout elapsed.
+  if (process.platform === 'linux') {
+    try {
+      const stat = readFileSync(`/proc/${String(pid)}/stat`, 'utf8')
+      const close = stat.lastIndexOf(')')
+      if (close !== -1 && stat.slice(close + 2, close + 3) === 'Z') return false
+    } catch {}
+  } else if (process.platform === 'darwin') {
+    const result = spawnSync('/bin/ps', ['-o', 'stat=', '-p', String(pid)], {
+      encoding: 'utf8', timeout: 1_000, windowsHide: true,
+    })
+    const state = result.stdout.trim()
+    if (result.status === 1 && state === '') return false
+    if (state.startsWith('Z')) return false
+  }
+  return true
 }
 
 /** Create a private file atomically when it is absent. */
@@ -360,9 +400,10 @@ export function removeStartupClaim(path: string, pid: number): void {
 }
 
 function terminateExisting(program: Command, startup: HostStartupValues, replace: boolean): boolean {
-  const existing = readEndpoint(startup.endpointFile)
+  const existing = readEndpoint(startup.endpointFile) ?? readEndpoint(startup.registryFile)
   if (existing === undefined || !processExists(existing.pid)) {
     if (existsSync(startup.endpointFile)) rmSync(startup.endpointFile, { force: true })
+    if (existsSync(startup.registryFile)) rmSync(startup.registryFile, { force: true })
     return false
   }
   if (!replace) {
@@ -382,6 +423,11 @@ function terminateExisting(program: Command, startup: HostStartupValues, replace
         program.error('error: --connection-token conflicts with the running supervisor; pass --replace')
       }
     }
+    // Repair either discovery copy while attaching. This keeps the stable
+    // per-user registry authoritative even if a previous process stopped
+    // between publishing the instance endpoint and the registry entry.
+    if (readEndpoint(startup.endpointFile)?.generationId !== existing.generationId) writeEndpoint(startup.endpointFile, existing)
+    if (readEndpoint(startup.registryFile)?.generationId !== existing.generationId) writeEndpoint(startup.registryFile, existing)
     process.stdout.write(`dsh-host: supervisor already running on ${existing.host}:${String(existing.port)} (PID ${String(existing.pid)})\n`)
     return true
   }
@@ -393,11 +439,12 @@ function terminateExisting(program: Command, startup: HostStartupValues, replace
     }
   }
   removeEndpoint(startup.endpointFile, existing.generationId)
+  removeEndpoint(startup.registryFile, existing.generationId)
   return false
 }
 
 function printStatus(startup: HostStartupValues): boolean {
-  const endpoint = readEndpoint(startup.endpointFile)
+  const endpoint = readEndpoint(startup.endpointFile) ?? readEndpoint(startup.registryFile)
   if (endpoint === undefined || !processExists(endpoint.pid)) {
     process.stdout.write(`dsh-host: no live supervisor for ${startup.instanceId}\n`)
     return false
@@ -407,14 +454,16 @@ function printStatus(startup: HostStartupValues): boolean {
 }
 
 function killSupervisor(startup: HostStartupValues): boolean {
-  const endpoint = readEndpoint(startup.endpointFile)
+  const endpoint = readEndpoint(startup.endpointFile) ?? readEndpoint(startup.registryFile)
   if (endpoint === undefined || !processExists(endpoint.pid)) {
     rmSync(startup.endpointFile, { force: true })
+    rmSync(startup.registryFile, { force: true })
     process.stdout.write(`dsh-host: no live supervisor for ${startup.instanceId}\n`)
     return false
   }
   process.kill(endpoint.pid, 'SIGTERM')
   removeEndpoint(startup.endpointFile, endpoint.generationId)
+  removeEndpoint(startup.registryFile, endpoint.generationId)
   process.stdout.write(`dsh-host: stopped supervisor ${String(endpoint.pid)}\n`)
   return true
 }
@@ -432,6 +481,11 @@ export function apply(ctx: Context): void {
     }
     if (options.kill === true) {
       ctx.get('appExit')?.(killSupervisor(startup) ? 0 : 1)
+      return
+    }
+    if (options.list === true) {
+      process.stdout.write(`${JSON.stringify(listRegisteredHosts(), undefined, 2)}\n`)
+      ctx.get('appExit')?.(0)
       return
     }
     if (startup.foreground || supervisor) {

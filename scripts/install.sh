@@ -9,9 +9,14 @@ DSH_HOST_PACKAGE="${DSH_HOST_PACKAGE:-dsh-host@${DSH_HOST_VERSION}}"
 INSTALL_ROOT="${DSH_HOST_INSTALL_ROOT:-${HOME}/.dsh-host}"
 HARNESS_HOME="${DSH_HOME:-${HOME}/.dsh}"
 PNPM_VERSION="${DSH_HOST_PNPM_VERSION:-11.21.0}"
+START_HOST="${DSH_HOST_START:-1}"
 
 case "$INSTALL_ROOT" in
   ''|/|.) echo "dsh-host: unsafe install root: $INSTALL_ROOT" >&2; exit 2 ;;
+esac
+case "$START_HOST" in
+  0|1) ;;
+  *) echo "dsh-host: DSH_HOST_START must be 0 or 1" >&2; exit 2 ;;
 esac
 
 case "$(uname -s)" in
@@ -24,6 +29,7 @@ case "$(uname -m)" in
   arm64|aarch64) node_arch=arm64 ;;
   *) echo "dsh-host: unsupported architecture: $(uname -m)" >&2; exit 2 ;;
 esac
+printf 'DSH_HOST_PROGRESS checking-runtime\n'
 
 runtime_name="node-v${NODE_VERSION}-${node_os}-${node_arch}"
 runtime_dir="${INSTALL_ROOT}/runtime/${runtime_name}"
@@ -39,6 +45,7 @@ cleanup() { rm -rf "$work_dir"; }
 trap cleanup EXIT HUP INT TERM
 
 if [ ! -x "$runtime_dir/bin/node" ]; then
+  printf 'DSH_HOST_PROGRESS installing-node\n'
   archive="${runtime_name}.tar.xz"
   dist="https://nodejs.org/dist/v${NODE_VERSION}"
   echo "dsh-host: downloading Node.js v${NODE_VERSION}"
@@ -56,11 +63,13 @@ node_bin="$runtime_dir/bin/node"
 npm_bin="$runtime_dir/bin/npm"
 export PATH="$runtime_dir/bin:$PATH"
 if [ ! -x "$tools_dir/node_modules/.bin/pnpm" ]; then
+  printf 'DSH_HOST_PROGRESS installing-pnpm\n'
   echo "dsh-host: installing pnpm ${PNPM_VERSION}"
   "$npm_bin" install --no-audit --no-fund --prefix "$tools_dir" "pnpm@${PNPM_VERSION}"
 fi
 
 if [ ! -f "$release_dir/node_modules/@deepseek-ai/dsh/package.json" ]; then
+  printf 'DSH_HOST_PROGRESS installing-harness\n'
   staged_release="$work_dir/release"
   mkdir -p "$staged_release"
   echo "dsh-host: installing DeepSeek Harness ${DSH_VERSION}"
@@ -70,6 +79,7 @@ fi
 
 # npm currently treats unreviewed install scripts as advisory, but the PTY
 # helper's executable bit is important enough to repair and validate directly.
+printf 'DSH_HOST_PROGRESS verifying-runtime\n'
 subprocess_dir="$release_dir/node_modules/@deepseek-ai/dsh-subprocess-local"
 if [ -f "$subprocess_dir/scripts/ensure-spawn-helper.mjs" ]; then
   "$node_bin" "$subprocess_dir/scripts/ensure-spawn-helper.mjs"
@@ -118,7 +128,20 @@ if [ -f "$DSH_HOST_PACKAGE" ]; then
 fi
 
 echo "dsh-host: installing Backend bundle ${DSH_HOST_PACKAGE}"
-"$node_bin" "$dsh_entry" plugin --profile dsh-host add "$DSH_HOST_PACKAGE"
+printf 'DSH_HOST_PROGRESS installing-bundle\n'
+profile_manifest="$HARNESS_HOME/profiles/host/package.json"
+if [ -f "$profile_manifest" ] && "$node_bin" -e '
+  const fs = require("fs")
+  const value = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))
+  process.exit(value.dependencies?.["dsh-host"] === undefined ? 1 : 0)
+' "$profile_manifest"
+then
+  # pnpm may retain a same-version link target when its spec changes from a
+  # directory to a tarball. Removing the old dependency first makes the
+  # profile package source transactional and unambiguous.
+  "$node_bin" "$dsh_entry" plugin --profile host remove dsh-host
+fi
+"$node_bin" "$dsh_entry" plugin --profile host add "$DSH_HOST_PACKAGE"
 
 ln -sfn "$runtime_dir" "$INSTALL_ROOT/runtime/current"
 ln -sfn "$release_dir" "$INSTALL_ROOT/current"
@@ -142,13 +165,17 @@ printf '%s\n' \
   '#!/bin/sh' \
   'set -eu' \
   "DSH_HOST_INSTALL_ROOT=\"\${DSH_HOST_INSTALL_ROOT:-$INSTALL_ROOT}\"" \
-  'exec "$DSH_HOST_INSTALL_ROOT/bin/dsh" --profile dsh-host "$@"' \
+  'exec "$DSH_HOST_INSTALL_ROOT/bin/dsh" --profile host "$@"' \
   > "$host_wrapper_tmp"
 chmod 755 "$host_wrapper_tmp"
 mv "$host_wrapper_tmp" "$INSTALL_ROOT/bin/dsh-host"
 
-echo "dsh-host: starting or reusing the Backend"
-"$INSTALL_ROOT/bin/dsh-host" --replace
-"$INSTALL_ROOT/bin/dsh-host" --status
+if [ "$START_HOST" = 1 ]; then
+  printf 'DSH_HOST_PROGRESS starting-host\n'
+  echo "dsh-host: starting or reusing the Backend"
+  "$INSTALL_ROOT/bin/dsh-host" --replace
+  "$INSTALL_ROOT/bin/dsh-host" --status
+fi
+printf 'DSH_HOST_PROGRESS installed\n'
 echo "dsh-host: installed at $INSTALL_ROOT"
 echo "dsh-host: add $INSTALL_ROOT/bin to PATH"

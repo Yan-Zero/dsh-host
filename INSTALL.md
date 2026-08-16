@@ -14,8 +14,8 @@ git clone git@github.com:Yan-Zero/dsh-host.git
 cd dsh-host
 pnpm install
 pnpm build
-dsh plugin --profile dsh-host add "$PWD"
-dsh --profile dsh-host
+dsh plugin --profile host add "$PWD"
+dsh --profile host
 ```
 
 ## SSH host without Node.js / 没有 Node.js 的 SSH 主机
@@ -49,8 +49,8 @@ git clone git@github.com:Yan-Zero/dsh-host.git
 Set-Location dsh-host
 pnpm install
 pnpm build
-dsh plugin --profile dsh-host add (Get-Location).Path
-dsh --profile dsh-host
+dsh plugin --profile host add (Get-Location).Path
+dsh --profile host
 ```
 
 ## Files / 文件
@@ -61,6 +61,7 @@ The default instance uses `$DSH_HOME/host/default/`:
 - `connection-token`: persistent secret, mode `0600` where supported;
 - `endpoint.json`: current generation, PID, loopback port, and token-file path.
 - `supervisor.log`: detached supervisor output and startup failures.
+- `$DSH_HOME/host/registry/<instance>.json`: per-user live-instance discovery.
 
 默认实例使用 `$DSH_HOME/host/default/`：`identity` 是稳定后端身份，
 `connection-token` 是持久连接凭据，`endpoint.json` 描述当前进程和端口。
@@ -76,10 +77,17 @@ Host 只监听 `127.0.0.1`，不要直接把端口暴露到公网。应通过 SS
 和 token，再建立本地端口转发。请求可使用 `X-DSH-Host-Token`、Bearer 或
 WebSocket 兼容的 `?tkn=`。
 
+After forwarding, clients can verify the negotiated carrier with
+`GET /dsh-host/protocol`. RPC uses `POST /api/<method>`; both event channels
+support SSE and WebSocket on their respective `/api/events.*` paths.
+
+建立转发后，客户端可通过 `GET /dsh-host/protocol` 校验协议。RPC 使用
+`POST /api/<method>`，两条 `/api/events.*` 事件通道同时支持 SSE 与 WebSocket。
+
 An externally managed secret can be selected with an absolute path:
 
 ```bash
-dsh --profile dsh-host --connection-token-file /run/secrets/dsh-host-token
+dsh --profile host --connection-token-file /run/secrets/dsh-host-token
 ```
 
 ## Foreground / 前台运行
@@ -88,7 +96,7 @@ For systemd, launchd, Windows Services, containers, or debugging, let the
 external manager own persistence:
 
 ```bash
-dsh --profile dsh-host --foreground --instance default
+dsh --profile host --foreground --instance default
 ```
 
 The process prints one machine-readable `DSH_HOST_READY {...}` line after the

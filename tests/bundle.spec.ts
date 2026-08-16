@@ -26,29 +26,30 @@ describe('dsh-host bundle', () => {
     expect(inserted.find(row => row.id === 'webserver')?.name).toBe('dsh-host/server')
     expect(inserted.find(row => row.id === 'host-runtime')?.name).toBe('dsh-host')
     expect(inserted).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: 'client-locale-contract',
-        name: '@deepseek-ai/dsh-client-locale',
-      }),
-      expect.objectContaining({
-        id: 'client-theme-contract',
-        name: '@deepseek-ai/dsh-client-ui-theme',
-      }),
-      expect.objectContaining({
-        id: 'client-conversation-contract',
-        name: '@deepseek-ai/dsh-client-ui-conversation',
-      }),
-      expect.objectContaining({
-        id: 'client-onboarding-contract',
-        name: '@deepseek-ai/dsh-client-ui-settings-general',
-      }),
-      expect.objectContaining({
-        id: 'client-deliverables-contract',
-        name: '@deepseek-ai/dsh-client-ui-deliverables',
-      }),
+      expect.objectContaining({ id: 'host-protocol', name: 'dsh-host/protocol' }),
     ]))
+    expect(inserted.some(row => row.name === '@deepseek-ai/dsh-client-connection')).toBe(false)
+    expect(inserted.some(row => row.name?.startsWith('@deepseek-ai/dsh-client-'))).toBe(false)
     expect(inserted.some(row => row.name === '@deepseek-ai/dsh-client-modules')).toBe(false)
     expect(parsed.find(row => row.id === 'tool-bash')).toMatchObject({ disabled: true })
     expect(parsed.find(row => row.id === 'tool-pwsh')).toMatchObject({ disabled: true })
+  })
+
+  it('publishes machine-readable installer progress stages', () => {
+    const root = fileURLToPath(new URL('..', import.meta.url))
+    const installer = readFileSync(resolve(root, 'scripts/install.sh'), 'utf8')
+    expect(installer).toContain('DSH_HOST_PROGRESS installing-node')
+    expect(installer).toContain('DSH_HOST_PROGRESS installing-harness')
+    expect(installer).toContain('DSH_HOST_PROGRESS installing-bundle')
+    expect(installer).toContain('DSH_HOST_PROGRESS installed')
+  })
+
+  it('ships the public integration contracts', () => {
+    const root = fileURLToPath(new URL('..', import.meta.url))
+    const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { files?: string[] }
+    expect(manifest.files).toContain('docs')
+    for (const name of ['PROTOCOL.md', 'PROTOCOL.zh.md', 'PLUGINS.md', 'PLUGINS.zh.md']) {
+      expect(readFileSync(resolve(root, 'docs', name), 'utf8').trim()).not.toBe('')
+    }
   })
 })

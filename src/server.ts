@@ -1,4 +1,4 @@
-/** Authenticated loopback WebServer provider for the dsh-host profile. */
+/** Authenticated loopback HTTP route provider for the dsh-host profile. */
 
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import {
@@ -105,7 +105,7 @@ function rejectUpgrade(socket: Duplex): void {
   ].join('\r\n'))
 }
 
-/** WebServer-compatible service that authenticates before route dispatch. */
+/** Harness route-service implementation that authenticates before dispatch. */
 export class DshHostServer extends Service {
   static Config: z<Config> = z.object({
     host: z.const('127.0.0.1').required(),

@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { hostCommand, loadOrCreateIdentity, readEndpoint, removeEndpoint, resolveHostStartup, waitForEndpoint, writeEndpoint } from '../src/startup.js'
+import { hostCommand, listRegisteredHosts, loadOrCreateIdentity, processExists, readEndpoint, removeEndpoint, resolveHostStartup, waitForEndpoint, writeEndpoint } from '../src/startup.js'
 
 const roots: string[] = []
 afterEach(() => {
@@ -16,6 +16,10 @@ function temporaryRoot(): string {
 }
 
 describe('startup values', () => {
+  it('uses the short host profile name in help output', () => {
+    expect(hostCommand().name()).toBe('dsh --profile host')
+  })
+
   it('resolves all instance-owned files below an explicit data directory', () => {
     const root = temporaryRoot()
     const resolved = resolveHostStartup(hostCommand(), {
@@ -41,6 +45,11 @@ describe('startup values', () => {
 })
 
 describe('identity and endpoint registry', () => {
+  it('does not report impossible process ids as live', () => {
+    expect(processExists(-1)).toBe(false)
+    expect(processExists(Number.MAX_SAFE_INTEGER)).toBe(false)
+  })
+
   it('keeps a stable identity and removes only the owning generation', () => {
     const root = temporaryRoot()
     const identityFile = join(root, 'identity')
@@ -69,6 +78,29 @@ describe('identity and endpoint registry', () => {
     expect(readEndpoint(endpointFile)).toEqual(record)
     removeEndpoint(endpointFile, 'generation-a')
     expect(readEndpoint(endpointFile)).toBeUndefined()
+  })
+
+  it('lists live Host instances and prunes stale registry entries', () => {
+    const root = temporaryRoot()
+    const live = {
+      protocol: 'dsh-host' as const,
+      protocolVersion: 1,
+      hostVersion: '0.1.0',
+      instanceId: 'remote-ssh',
+      generationId: 'generation-live',
+      identity: '00000000-0000-4000-8000-000000000000',
+      pid: process.pid,
+      host: '127.0.0.1' as const,
+      port: 43210,
+      tokenFile: join(root, 'connection-token'),
+      startedAt: new Date(0).toISOString(),
+      capabilities: ['dsh.api.v1'],
+    }
+    writeEndpoint(join(root, 'remote-ssh.json'), live)
+    writeEndpoint(join(root, 'stale.json'), { ...live, instanceId: 'stale', generationId: 'generation-stale', pid: Number.MAX_SAFE_INTEGER })
+
+    expect(listRegisteredHosts(root)).toEqual([live])
+    expect(readEndpoint(join(root, 'stale.json'))).toBeUndefined()
   })
 
 

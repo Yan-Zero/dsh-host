@@ -1,8 +1,8 @@
 # dsh-host
 
 `dsh-host` 将 DeepSeek Harness 作为常驻、无界面的后端运行。AI 运行时、会话、
-工具、工作区、审批、附件、后台任务与存储都留在 Host 机器上；本地 TUI、Web
-或 Remote SSH 客户端断开后，远端会话仍可继续，之后可以重新接入。
+工具、工作区、审批、附件、后台任务与存储都留在 Host 机器上；客户端适配器断开
+后，远端会话仍可继续，之后可以重新接入。
 
 它参考了 VS Code 远程架构的进程边界：远端执行独立于观察客户端持续运行。下面的
 通信协议与认证方式属于 dsh-host 自己的契约，并不是 VS Code 协议：
@@ -20,35 +20,43 @@
 ```bash
 pnpm install
 pnpm build
-dsh plugin --profile dsh-host add /absolute/path/to/dsh-host
+dsh plugin --profile host add /absolute/path/to/dsh-host
 ```
 
 启动：
 
 ```bash
-dsh --profile dsh-host
+dsh --profile host
 ```
 
 默认会启动后台 supervisor。开发或交给 systemd 等外部服务管理时，可使用：
 
 ```bash
-dsh --profile dsh-host --foreground
+dsh --profile host --foreground
 ```
 
-使用 `--status` 查看共享 supervisor，使用 `--kill` 停止它。
+使用 `--status` 查看共享 supervisor，使用 `--kill` 停止它；`--list` 会列出当前
+OS 用户注册的全部存活 Host 实例。
 
-本机 Web profile 安装 `dsh-remote-ssh` 后，可在 SSH 主机旁选择 **打开
-Backend**。观察窗口在本机显示，但 API 与事件流通过同一条 SSH 连接接入本 Host。
+所有客户端使用同一个 Host 协议：认证后的 `/api/<method>` RPC、
+`/api/events.mux` 与 `/api/events.host` 事件流，以及
+`/dsh-host/protocol` 协议发现。`dsh-remote-ssh` 原样转发这个端点，并为终端和
+daemon 客户端导出 Node client；它的 Web surface 只为本机静态页面增加同源反向代理。
 
-默认私有状态位于 `$DSH_HOME/host/default/`。远程客户端通过 SSH 读取
-`endpoint.json` 和 token 文件，再转发 loopback 端口。
+插件安装在远端 `host` profile 中，其配置、依赖、命令和 agent 作用域仍使用
+Harness 的原生机制。客户端与插件接入方式见[Host 协议](./docs/PROTOCOL.zh.md)
+和[插件契约](./docs/PLUGINS.zh.md)。
+
+默认私有状态位于 `$DSH_HOME/host/default/`。每个 generation 还会在
+`$DSH_HOME/host/registry/` 发布 per-user 注册项。远程客户端通过稳定实例名找到
+当前 PID、随机 loopback 端口与 token；重新连接不会重启 Host。
 
 部署与安全说明见 [INSTALL.md](./INSTALL.md)。
 
 ## 仓库边界
 
-本仓库只负责 Backend profile 及其连接/发现契约。TUI、Web、Remote SSH 适配器
-与 profile 迁移可以作为独立插件演进，而无需改变会话实际运行的位置。
+本仓库负责 Backend profile、认证和连接/发现契约，不挂载浏览器、终端、locale、
+theme 或其他 UI package。
 
 ## 许可证
 
